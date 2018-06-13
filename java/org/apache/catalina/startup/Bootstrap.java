@@ -44,6 +44,8 @@ import org.apache.juli.logging.LogFactory;
  * other classes they depend on, such as an XML parser) out of the system
  * class path and therefore not visible to application level classes.
  *
+ * bootstrap主要是用来加载catalina类。bootstrap和catalina分离的主要目的是为了隔离catalina相关的内部
+ * 类和系统的类。
  * @author Craig R. McClanahan
  * @author Remy Maucherat
  * @version $Id$
@@ -57,7 +59,9 @@ public final class Bootstrap {
      */
     private static Bootstrap daemon = null;
 
+    /** 系统变量 catalina的基本目录 **/
     private static final File catalinaBaseFile;
+    /** 系统变量 catalina的主目录 **/
     private static final File catalinaHomeFile;
 
     //见createClassLoader(String, ClassLoader)方法中的注释
@@ -68,12 +72,15 @@ public final class Bootstrap {
     //默认情况下这两个字段是一样的
     static {
         // Will always be non-null
+        //从系统属性中读取用户目录
         String userDir = System.getProperty("user.dir");
 
         // Home first
+        //从系统属性中读取catalina的主目录catalina.home
         String home = System.getProperty(Globals.CATALINA_HOME_PROP);
         File homeFile = null;
 
+        //若系统属性中catalina.home不为空，令homeFile为规范路径文件
         if (home != null) {
             File f = new File(home);
             try {
@@ -83,11 +90,14 @@ public final class Bootstrap {
             }
         }
 
+        //若系统属性中catalina.home为空或catalina.home指向的文件为空
         if (homeFile == null) {
             // First fall-back. See if current directory is a bin directory
             // in a normal Tomcat install
+            //获取用户目录下bootstrap.jar所在的文件
             File bootstrapJar = new File(userDir, "bootstrap.jar");
 
+            //若存在bootstrap.jar所在的文件则获取其所在文件夹的上级目录
             if (bootstrapJar.exists()) {
                 //bootstrap.jar通常在bin目录中，所以bin目录的上级目录正好是Tomcat的安装目录
                 File f = new File(userDir, "..");
@@ -101,6 +111,7 @@ public final class Bootstrap {
             }
         }
 
+        //若homeFile任然为空则直接令用户目录为homeFile
         if (homeFile == null) {
             // Second fall-back. Use current directory
             File f = new File(userDir);
@@ -111,14 +122,18 @@ public final class Bootstrap {
             }
         }
 
+        //设置本例中的catalinaHomeFile属性值并且设置系统属性值
         catalinaHomeFile = homeFile;
         System.setProperty(
                 Globals.CATALINA_HOME_PROP, catalinaHomeFile.getPath());
 
         // Then base
+        //获取系统属性中的catalina.base属性值
         String base = System.getProperty(Globals.CATALINA_BASE_PROP);
+        //若系统属性中的catalina.base属性值为空则直接令catalinaBaseFile等于上面的catalinaHomeFile
         if (base == null) {
             catalinaBaseFile = catalinaHomeFile;
+            //否则读取对应的文件目录
         } else {
             File baseFile = new File(base);
             try {
@@ -270,11 +285,16 @@ public final class Bootstrap {
 
     /**
      * Initialize daemon.
+     *
+     * 初始化本例
+     *
      */
     public void init() throws Exception {
 
+        //初始化类加载器，包括CommonClassLoader,CatalinaClassLoader,SharedClassLoader，默认情况这三者指向同一个。
         initClassLoaders();
 
+        //设置当前线程上下文类加载器为CatalinaClassLoader
         Thread.currentThread().setContextClassLoader(catalinaLoader);
 
         SecurityClassLoad.securityClassLoad(catalinaLoader);
@@ -282,6 +302,8 @@ public final class Bootstrap {
         // Load our startup class and call its process() method
         if (log.isDebugEnabled())
             log.debug("Loading startup class");
+
+        //通过反射新建Catalina实例并且调用setParentClassLoader方法设置为本例的值
         Class<?> startupClass =
             catalinaLoader.loadClass
             ("org.apache.catalina.startup.Catalina");
@@ -299,6 +321,7 @@ public final class Bootstrap {
             startupInstance.getClass().getMethod(methodName, paramTypes);
         method.invoke(startupInstance, paramValues);
 
+        //设置本例中对catalina对象的引用
         catalinaDaemon = startupInstance;
 
     }
@@ -470,14 +493,19 @@ public final class Bootstrap {
      * Main method and entry point when starting Tomcat via the provided
      * scripts.
      *
+     * 主方法入口，tomcat相关命令的入口。
+     *
      * @param args Command line arguments to be processed
      */
     public static void main(String args[]) {
 
+        //若daemon守护线程为空
         if (daemon == null) {
             // Don't set daemon until init() has completed
+            //新建bootstrap对象
             Bootstrap bootstrap = new Bootstrap();
             try {
+                //初始化bootstrap对象
                 bootstrap.init();
             } catch (Throwable t) {
                 handleThrowable(t);
